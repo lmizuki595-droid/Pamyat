@@ -2,7 +2,7 @@ import { getContext } from "../../../extensions.js";
 import { eventSource, event_types } from "../../../../script.js";
 
 const EXTENSION_NAME = "context-trimmer";
-// Загружаем лимит (по умолчанию 4000 токенов, минимум 1000, максимум 32000)
+// Загружаем лимит (по умолчанию 4000 токенов)
 let maxTokens = parseInt(localStorage.getItem('trimmer_max_tokens')) || 4000;
 
 // Функция точного расчета и скрытия
@@ -10,7 +10,15 @@ function checkAndTrimMessages() {
     const context = getContext();
     const chat = context.chat; // Массив всех сообщений в текущем чате
     
-    if (!chat || chat.length === 0) return;
+    // Находим элементы счетчиков в нашем UI
+    const tokensDisplay = document.getElementById('trimmer-current-tokens');
+    const hiddenDisplay = document.getElementById('trimmer-hidden-count');
+
+    if (!chat || chat.length === 0) {
+        if (tokensDisplay) tokensDisplay.innerText = '0';
+        if (hiddenDisplay) hiddenDisplay.innerText = '0';
+        return;
+    }
 
     // Находим все DOM-элементы сообщений на странице
     const messageElements = document.querySelectorAll('#chat .mes');
@@ -36,10 +44,10 @@ function checkAndTrimMessages() {
         totalTokensAccumulated += messageTokens;
     }
 
+    let hiddenCount = 0;
+
     // Если нашли индекс, до которого нужно всё скрыть
     if (cutoffIndex !== -1) {
-        let hiddenCount = 0;
-        // Скрываем элементы в DOM, у которых data-id (или порядковый номер) меньше или равен cutoffIndex
         messageElements.forEach((el) => {
             const msgId = parseInt(el.getAttribute('data-id') || el.getAttribute('mesid'));
             if (!isNaN(msgId) && msgId <= cutoffIndex) {
@@ -47,13 +55,18 @@ function checkAndTrimMessages() {
                 hiddenCount++;
             }
         });
-        console.log(`[Trimmer] Лимит превышен. Скрыто сообщений: ${hiddenCount}. Оставшийся видимый контекст: ~${totalTokensAccumulated} токенов.`);
-    } else {
-        console.log(`[Trimmer] Всё отлично влезает в лимит. Текущий видимый контекст: ~${totalTokensAccumulated} токенов.`);
+    }
+
+    // Обновляем статистику во вкладке расширения
+    if (tokensDisplay) {
+        tokensDisplay.innerText = totalTokensAccumulated;
+    }
+    if (hiddenDisplay) {
+        hiddenDisplay.innerText = hiddenCount;
     }
 }
 
-// Создаем UI со слайдером в панели расширений
+// Создаем UI со слайдером и статистикой в панели расширений
 function createUI() {
     const container = document.createElement('div');
     container.className = 'trimmer-settings-block';
@@ -63,8 +76,14 @@ function createUI() {
             <label for="trimmer-range">Лимит контекста:</label>
             <span id="trimmer-val-display"><strong>${maxTokens}</strong> токенов</span>
         </div>
+        
         <input type="range" id="trimmer-range" class="trimmer-slider" min="1000" max="16000" step="500" value="${maxTokens}">
-        <small style="opacity: 0.6;">Старые сообщения будут автоматически скрываться, чтобы видимая часть не превышала этот порог.</small>
+        
+        <!-- Блок статистики во вкладке расширения -->
+        <div style="margin-top: 5px; font-size: 0.85em; display: flex; flex-direction: column; gap: 4px; opacity: 0.85;">
+            <div>Видимый контекст: <strong id="trimmer-current-tokens">0</strong> токенов</div>
+            <div>Скрыто сообщений: <strong id="trimmer-hidden-count">0</strong></div>
+        </div>
     `;
     
     document.getElementById('extensions_settings').appendChild(container);
@@ -77,7 +96,7 @@ function createUI() {
         maxTokens = parseInt(e.target.value);
         display.innerHTML = `<strong>${maxTokens}</strong> токенов`;
         localStorage.setItem('trimmer_max_tokens', maxTokens);
-        checkAndTrimMessages(); // Пересчитываем «на лету» при перетаскивании!
+        checkAndTrimMessages(); // Пересчитываем сразу при перетаскивании
     });
 }
 
@@ -89,7 +108,9 @@ jQuery(document).ready(function () {
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, checkAndTrimMessages);
     eventSource.on(event_types.USER_MESSAGE_RENDERED, checkAndTrimMessages);
     eventSource.on(event_types.CHAT_CHANGED, () => {
-        // Небольшая задержка, чтобы чат успел прогрузиться в DOM
         setTimeout(checkAndTrimMessages, 200);
     });
+    
+    // Первичный расчет при загрузке страницы
+    setTimeout(checkAndTrimMessages, 500);
 });
