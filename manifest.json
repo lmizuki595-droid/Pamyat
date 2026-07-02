@@ -1,0 +1,9 @@
+{
+    "id": "my-mobile-extension",
+    "name": "My Mobile Extension",
+    "version": "1.0.0",
+    "description": "Расширение, созданное с телефона",
+    "author": "luna",
+    "entryPoint": "index.js",
+    "js": ["index.js"]
+}
