@@ -5,7 +5,7 @@ const EXTENSION_NAME = "context-trimmer";
 // Загружаем лимит (по умолчанию 4000 токенов)
 let maxTokens = parseInt(localStorage.getItem('trimmer_max_tokens')) || 4000;
 
-// Функция точного расчета и скрытия
+// Функция точного расчета и скрытия сообщений
 function checkAndTrimMessages() {
     const context = getContext();
     const chat = context.chat; // Массив всех сообщений в текущем чате
@@ -32,11 +32,11 @@ function checkAndTrimMessages() {
 
     // Идем с КОНЦА чата (от новейших к старейшим)
     for (let i = chat.length - 1; i >= 0; i--) {
-        // Пытаемся взять готовые токены сообщения, иначе грубо считаем: 1 токен ~ 4 символа
+        // Берем готовые токены сообщения, иначе грубо считаем: 1 токен ~ 4 символа
         const messageTokens = chat[i].extra?.token_count || Math.ceil((chat[i].mes || "").length / 4);
         
         if (totalTokensAccumulated + messageTokens > maxTokens) {
-            // Если это сообщение уже не влезает в лимит, значит его и все, что ДО него, нужно скрыть
+            // Если сообщение не влезает в лимит, скрываем его и все, что ДО него
             cutoffIndex = i;
             break;
         }
@@ -58,45 +58,79 @@ function checkAndTrimMessages() {
     }
 
     // Обновляем статистику во вкладке расширения
-    if (tokensDisplay) {
-        tokensDisplay.innerText = totalTokensAccumulated;
-    }
-    if (hiddenDisplay) {
-        hiddenDisplay.innerText = hiddenCount;
-    }
+    if (tokensDisplay) tokensDisplay.innerText = totalTokensAccumulated.toLocaleString();
+    if (hiddenDisplay) hiddenDisplay.innerText = hiddenCount;
 }
 
-// Создаем UI со слайдером и статистикой в панели расширений
+// Создаем сворачивающийся UI в стиле SillyTavern
 function createUI() {
-    const container = document.createElement('div');
-    container.className = 'trimmer-settings-block';
+    const extensionsMenu = document.getElementById('extensions_settings');
+    if (!extensionsMenu) return;
+
+    // Создаем главный контейнер-обертку
+    const wrapper = document.createElement('div');
+    wrapper.className = 'trimmer-extension-wrapper';
+
+    // Создаем шапку вкладки (кнопку сворачивания/разворачивания)
+    const header = document.createElement('div');
+    header.className = 'inline-drawer-toggle inline-drawer-header';
+    header.style.display = 'flex';
+    header.style.justifyContent = 'space-between';
+    header.style.alignItems = 'center';
+    header.style.cursor = 'pointer';
     
-    container.innerHTML = `
+    header.innerHTML = `
+        <span class="inline-drawer-icon font-icon fas fa-chevron-down"></span>
+        <span class="drawer-title" style="flex-grow: 1; margin-left: 10px; font-weight: bold;">Context Trimmer</span>
+    `;
+
+    // Создаем тело вкладки, которое будет скрываться
+    const content = document.createElement('div');
+    content.className = 'inline-drawer-content trimmer-settings-block';
+    // По умолчанию сделаем открытым, но таверна умеет это скрывать
+    content.style.display = 'block'; 
+
+    content.innerHTML = `
         <div class="trimmer-value-wrapper">
             <label for="trimmer-range">Лимит контекста:</label>
-            <span id="trimmer-val-display"><strong>${maxTokens}</strong> токенов</span>
+            <span id="trimmer-val-display"><strong>${maxTokens.toLocaleString()}</strong> токенов</span>
         </div>
         
-        <input type="range" id="trimmer-range" class="trimmer-slider" min="1000" max="16000" step="500" value="${maxTokens}">
+        <!-- Ползунок теперь до 200 000 с шагом 1000 -->
+        <input type="range" id="trimmer-range" class="trimmer-slider" min="1000" max="200000" step="1000" value="${maxTokens}">
         
-        <!-- Блок статистики во вкладке расширения -->
-        <div style="margin-top: 5px; font-size: 0.85em; display: flex; flex-direction: column; gap: 4px; opacity: 0.85;">
+        <div style="margin-top: 8px; font-size: 0.85em; display: flex; flex-direction: column; gap: 4px; opacity: 0.85;">
             <div>Видимый контекст: <strong id="trimmer-current-tokens">0</strong> токенов</div>
             <div>Скрыто сообщений: <strong id="trimmer-hidden-count">0</strong></div>
         </div>
     `;
-    
-    document.getElementById('extensions_settings').appendChild(container);
+
+    // Логика сворачивания вкладки по клику на шапку
+    header.addEventListener('click', () => {
+        const icon = header.querySelector('.inline-drawer-icon');
+        if (content.style.display === 'none') {
+            content.style.display = 'block';
+            icon.classList.replace('fa-chevron-right', 'fa-chevron-down');
+        } else {
+            content.style.display = 'none';
+            icon.classList.replace('fa-chevron-down', 'fa-chevron-right');
+        }
+    });
+
+    // Собираем всё вместе и встраиваем в меню таверны
+    wrapper.appendChild(header);
+    wrapper.appendChild(content);
+    extensionsMenu.appendChild(wrapper);
     
     const slider = document.getElementById('trimmer-range');
     const display = document.getElementById('trimmer-val-display');
     
-    // Обработка движения ползунка
+    // Обработка ползунка
     slider.addEventListener('input', (e) => {
         maxTokens = parseInt(e.target.value);
-        display.innerHTML = `<strong>${maxTokens}</strong> токенов`;
+        display.innerHTML = `<strong>${maxTokens.toLocaleString()}</strong> токенов`;
         localStorage.setItem('trimmer_max_tokens', maxTokens);
-        checkAndTrimMessages(); // Пересчитываем сразу при перетаскивании
+        checkAndTrimMessages();
     });
 }
 
@@ -104,13 +138,11 @@ function createUI() {
 jQuery(document).ready(function () {
     createUI();
     
-    // Следим за рендером новых сообщений и за сменой персонажа/чата
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, checkAndTrimMessages);
     eventSource.on(event_types.USER_MESSAGE_RENDERED, checkAndTrimMessages);
     eventSource.on(event_types.CHAT_CHANGED, () => {
         setTimeout(checkAndTrimMessages, 200);
     });
     
-    // Первичный расчет при загрузке страницы
     setTimeout(checkAndTrimMessages, 500);
 });
