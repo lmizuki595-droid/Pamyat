@@ -1,9 +1,10 @@
 {
-    "id": "my-mobile-extension",
-    "name": "My Mobile Extension",
+    "id": "context-trimmer",
+    "name": "Context Message Trimmer",
     "version": "1.0.0",
-    "description": "Расширение, созданное с телефона",
-    "author": "luna",
+    "description": "Автоматически скрывает старые сообщения при достижении лимита токенов",
+    "author": "Li",
     "entryPoint": "index.js",
-    "js": ["index.js"]
+    "js": ["index.js"],
+    "css": ["style.css"]
 }
